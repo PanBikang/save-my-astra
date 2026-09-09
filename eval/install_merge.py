@@ -1,158 +1,66 @@
 from __future__ import annotations
 
-import re
+import shutil
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
+
+import tomlkit
 
 from eval.paths import SKILL_FILE, SKILL_NAME
 from eval.profiles import load_profile
 from eval.render import render_template
 
-MODEL_KEYS = ("model =", "model_reasoning_effort =")
-
-AGENT_SCALAR_KEYS = frozenset(
-    {
-        "enabled",
-        "default_subagent_model",
-        "default_subagent_reasoning_effort",
-        "max_concurrent_threads_per_session",
-        "max_threads",
-        "interrupt_message",
-        "max_depth",
-        "job_max_runtime_seconds",
-    }
-)
-
-_ASSIGN = re.compile(r"^([A-Za-z0-9_.-]+)\s*=")
-_TABLE = re.compile(r"^\[", re.M)
-
-
-def _replace_or_insert_top(text: str, key: str, value: str) -> str:
-    pattern = re.compile(rf"^{re.escape(key)}\s*.*$", re.M)
-    line = f"{key} {value}"
-    if pattern.search(text):
-        return pattern.sub(line, text, count=1)
-    return line + "\n" + text
-
-
-def _section_span(text: str, heading: str) -> tuple[int, int] | None:
-    """Span of `[heading]` through the line before the next table header.
-
-    Table headers are lines that start with `[`. Inline arrays such as
-    `notify = ["/bin/true", "turn-ended"]` must not end the section.
-    """
-    header = re.search(rf"^\[{re.escape(heading)}\][ \t]*$", text, re.M)
-    if not header:
-        return None
-    rest_start = header.end()
-    nxt = _TABLE.search(text[rest_start:])
-    end = rest_start + nxt.start() if nxt else len(text)
-    return header.start(), end
-
-
-def _root_end(text: str) -> int:
-    match = _TABLE.search(text)
-    return match.start() if match else len(text)
-
-
-def _root_has_key(text: str, key: str) -> bool:
-    return re.search(rf"^{re.escape(key)}\s*=", text[: _root_end(text)], re.M) is not None
-
-
-def _insert_before_first_table(text: str, block: str) -> str:
-    chunk = block if block.endswith("\n") else block + "\n"
-    if not text.strip():
-        return chunk
-    idx = _root_end(text)
-    prefix = text[:idx].rstrip() + "\n\n"
-    suffix = text[idx:].lstrip("\n")
-    if not suffix:
-        return prefix + chunk
-    return prefix + chunk + ("\n" if chunk.endswith("\n\n") else "\n") + suffix
-
-
-def _split_agents_body(body: str) -> tuple[str, str]:
-    stray: list[str] = []
-    agent: list[str] = []
-    collecting_stray = False
-    for line in body.splitlines(keepends=True):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            (stray if collecting_stray else agent).append(line)
-            continue
-        match = _ASSIGN.match(stripped)
-        if match:
-            collecting_stray = match.group(1) not in AGENT_SCALAR_KEYS
-            (stray if collecting_stray else agent).append(line)
-        else:
-            (stray if collecting_stray else agent).append(line)
-    return "".join(agent), "".join(stray)
-
-
-def _stray_key(line: str) -> str | None:
-    stripped = line.strip()
-    if not stripped or stripped.startswith("#"):
-        return None
-    match = _ASSIGN.match(stripped)
-    return match.group(1) if match else None
-
-
-def _filter_stray_already_at_root(text: str, stray: str) -> str:
-    kept: list[str] = []
-    skip_key: str | None = None
-    for line in stray.splitlines(keepends=True):
-        key = _stray_key(line)
-        if key is not None:
-            skip_key = key if _root_has_key(text, key) else None
-        if skip_key is None:
-            kept.append(line)
-    return "".join(kept)
-
-
-def _hoist_stray_from_agents(text: str) -> str:
-    span = _section_span(text, "agents")
-    if not span:
-        return text
-    start, end = span
-    raw = text[start:end]
-    newline = raw.find("\n")
-    body = raw[newline + 1 :] if newline != -1 else ""
-    agent_body, stray = _split_agents_body(body)
-    stray = _filter_stray_already_at_root(text, stray)
-    if not stray.strip():
-        return text
-    heading = raw[: newline + 1] if newline != -1 else raw + "\n"
-    without_stray = text[:start] + heading + agent_body + text[end:]
-    return _insert_before_first_table(without_stray, stray.rstrip() + "\n")
-
-
-def _replace_section(text: str, heading: str, body: str, *, after_root: bool = False) -> str:
-    block = f"[{heading}]\n{body.rstrip()}\n\n"
-    span = _section_span(text, heading)
-    if span:
-        start, end = span
-        return text[:start] + block + text[end:].lstrip("\n")
-    if after_root:
-        return _insert_before_first_table(text, block)
-    return text.rstrip() + "\n\n" + block
+MANAGED_BEGIN = "<!-- save-my-astra:begin -->"
+MANAGED_END = "<!-- save-my-astra:end -->"
 
 
 def merge_snippet(existing: str, profile_name: str) -> str:
     profile = load_profile(profile_name)
-    text = existing if existing.strip() else ""
-    text = _replace_or_insert_top(text, "model =", f'"{profile.parent_model}"')
-    text = _replace_or_insert_top(
-        text, "model_reasoning_effort =", f'"{profile.parent_effort}"'
-    )
-    text = _hoist_stray_from_agents(text)
-    agents_body = (
-        f"enabled = {'true' if profile.agents_enabled else 'false'}\n"
-        f'default_subagent_model = "{profile.subagent_model}"\n'
-        f'default_subagent_reasoning_effort = "{profile.subagent_effort}"\n'
-        "max_concurrent_threads_per_session = 4\n"
-    )
-    text = _replace_section(text, "agents", agents_body, after_root=True)
-    text = _replace_section(text, "features.multi_agent_v2", "hide_spawn_agent_metadata = false\n")
+    data = tomlkit.parse(existing)
+    data["model"] = profile.parent_model
+    data["model_reasoning_effort"] = profile.parent_effort
+    agents = data.setdefault("agents", tomlkit.table())
+    # Repair the upstream installer's misplaced root options without discarding agent settings.
+    for key in ("notify", "model_provider"):
+        if key in agents:
+            data.setdefault(key, agents.pop(key))
+    agents["enabled"] = profile.agents_enabled
+    agents["default_subagent_model"] = profile.subagent_model
+    agents["default_subagent_reasoning_effort"] = profile.subagent_effort
+    agents.setdefault("max_concurrent_threads_per_session", 4)
+    features = data.setdefault("features", tomlkit.table())
+    features.setdefault("multi_agent_v2", tomlkit.table())["hide_spawn_agent_metadata"] = False
+    text = tomlkit.dumps(data)
     return text if text.endswith("\n") else text + "\n"
+
+
+def merge_agents(existing: str, profile_name: str) -> str:
+    content = render_template("AGENTS.md", load_profile(profile_name)).rstrip()
+    block = f"{MANAGED_BEGIN}\n{content}\n{MANAGED_END}"
+    if MANAGED_BEGIN in existing or MANAGED_END in existing:
+        if existing.count(MANAGED_BEGIN) != 1 or existing.count(MANAGED_END) != 1:
+            raise ValueError("AGENTS.md has incomplete or duplicate Save My Astra markers")
+        start = existing.index(MANAGED_BEGIN)
+        end = existing.index(MANAGED_END)
+        if end < start:
+            raise ValueError("AGENTS.md has reversed Save My Astra markers")
+        return existing[:start] + block + existing[end + len(MANAGED_END):]
+
+    # The upstream installer wrote an unmarked document. Replace only its known span.
+    legacy_start = existing.find("# Codex orchestration\n")
+    legacy_end_text = "Lead with the result. Use short paragraphs. Use lists only for parallel items. No filler closings."
+    if legacy_start >= 0:
+        legacy_end = existing.find(legacy_end_text, legacy_start)
+        if legacy_end < 0:
+            raise ValueError("Unrecognized legacy Codex orchestration block; no files were changed")
+        legacy_end += len(legacy_end_text)
+        legacy = existing[legacy_start:legacy_end]
+        if "### Workers take" not in legacy or "fork_turns: none" not in legacy:
+            raise ValueError("Unrecognized legacy Codex orchestration block; no files were changed")
+        return existing[:legacy_start] + block + existing[legacy_end:]
+    separator = "\n\n" if existing and not existing.endswith("\n") else "\n" if existing else ""
+    return existing + separator + block + "\n"
 
 
 def worker_filename(profile_name: str) -> str:
@@ -160,22 +68,37 @@ def worker_filename(profile_name: str) -> str:
     return f"{profile.subagent_name.replace('_', '-')}.toml"
 
 
-def write_install(codex_home: Path, profile_name: str) -> None:
+def install_files(codex_home: Path, profile_name: str) -> dict[Path, str]:
     profile = load_profile(profile_name)
-    (codex_home / "AGENTS.md").write_text(render_template("AGENTS.md", profile))
-    agents_dir = codex_home / "agents"
-    agents_dir.mkdir(exist_ok=True)
-    (agents_dir / worker_filename(profile_name)).write_text(
-        render_template("agents/worker.toml", profile)
-    )
     config = codex_home / "config.toml"
     existing = config.read_text() if config.exists() else ""
-    config.write_text(merge_snippet(existing, profile_name))
-    skill_src = SKILL_FILE
-    if skill_src.exists():
-        skill_dst = codex_home / "skills" / SKILL_NAME / "SKILL.md"
-        skill_dst.parent.mkdir(parents=True, exist_ok=True)
-        skill_dst.write_text(skill_src.read_text())
+    agents = codex_home / "AGENTS.md"
+    existing_agents = agents.read_text() if agents.exists() else ""
+    return {
+        Path("config.toml"): merge_snippet(existing, profile_name),
+        Path("AGENTS.md"): merge_agents(existing_agents, profile_name),
+        Path("agents") / worker_filename(profile_name): render_template("agents/worker.toml", profile),
+        Path("skills") / SKILL_NAME / "SKILL.md": SKILL_FILE.read_text(),
+    }
+
+
+def write_install(codex_home: Path, profile_name: str) -> Path:
+    files = install_files(codex_home, profile_name)
+    backup_root = codex_home / "backups"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = Path(tempfile.mkdtemp(prefix=f"save-my-astra-{stamp}-", dir=backup_root))
+    for relative in files:
+        source = codex_home / relative
+        if source.exists():
+            target = backup / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+    for relative, content in files.items():
+        target = codex_home / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    return backup
 
 
 def verify_install(codex_home: Path, profile_name: str) -> tuple[list[str], dict[str, str]]:
@@ -244,6 +167,12 @@ def verify_install(codex_home: Path, profile_name: str) -> tuple[list[str], dict
             errors.append("AGENTS.md does not name the child model")
         if "fork_turns: none" not in agents_md:
             errors.append("AGENTS.md missing fork_turns: none")
+    expected_agents = render_template("AGENTS.md", profile).rstrip()
+    if expected_agents not in agents_md:
+        errors.append("AGENTS.md does not contain the personal delegation rules")
+    expected_worker = tomlkit.parse(render_template("agents/worker.toml", profile))
+    if worker.get("developer_instructions") != expected_worker["developer_instructions"]:
+        errors.append("worker instructions do not match the personal read-only investigation and specified-check policy")
     return errors, summary
 
 
