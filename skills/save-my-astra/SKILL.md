@@ -2,11 +2,11 @@
 name: save-my-astra
 description: >-
   Install or update PanBikang's personal Save My Astra fork. Astra low writes
-  all files including tests and runs ordinary work; Luna max only waits for
-  existing long-running tasks. Supports fresh installation and replacing
+  all files including tests; Luna max performs read-only investigation,
+  runs specified checks, and monitors tasks. Supports fresh installation and replacing
   upstream Save My Astra while preserving unrelated Codex configuration.
-  安装或更新 PanBikang 个人版 Save My Astra；Astra 编写所有文件并执行工作，
-  Luna 仅等待和监控已有长任务，支持全新安装及覆盖原版。
+  安装或更新 PanBikang 个人版 Save My Astra；Astra 编写所有文件，
+  Luna 只读调查、执行指定检查和监控长任务，支持全新安装及覆盖原版。
 ---
 
 # Save My Astra: Personal Fork
@@ -17,9 +17,13 @@ Use https://github.com/PanBikang/save-my-astra, forked from fengxiaohu/save-my-a
 
 ## Ownership / 分工
 
-Astra owns all writing, including code, tests, fixtures, documentation, configuration, scripts, and refactors, plus ordinary execution, scans, debugging, and review. Luna only waits for tasks the parent already started, polls explicitly assigned read-only status/log sources, and reports completion, failure, or timeout. No child file writes, test runs, new jobs, retries, cancellation, or repairs. Fallback workers follow the same boundary.
+Astra owns all authored changes, including code, tests, fixtures, documentation, configuration, scripts, refactors, and formatting, plus decisions and final acceptance. Luna may perform bounded read-only searches, call-site inventories, log analysis, focused reviews, exact parent-specified test/check commands, and long-task monitoring. No child-authored file changes, weakened assertions, snapshot/golden updates, automatic fixes, dependency installation, production jobs, retries, cancellation, commits, or publishing. Check-generated disposable caches/logs/reports are allowed only at locations the parent explicitly names. Fallback workers follow the same boundary.
 
-Astra 负责所有文件编写，包括代码、测试、文档、配置、脚本和重构，以及普通执行、扫描、调试和审查。Luna 仅等待主代理已启动的任务，只读轮询指定状态或日志，报告完成、失败或超时。子代理不写文件、不运行测试、不新建任务、不重试、不取消也不修复；回退 worker 遵守相同边界。
+Astra 负责所有文件编写，包括代码、测试、文档、配置、脚本、重构和格式化，以及决策和最终验收。Luna 可进行有明确范围的只读搜索、调用方梳理、日志分析、专项审查，运行主代理准确指定的测试或检查命令，并监控长任务。子代理不编辑文件、不弱化断言、不更新快照或 golden 文件、不自动修复、不安装依赖、不启动生产任务、不重试、不取消、不提交或发布。检查生成的临时缓存、日志和报告仅允许写入主代理明确指定的位置；回退 worker 遵守相同边界。
+
+Give a specific question, allowed paths, exact check commands and working directory, permitted generated-output locations, and a stopping condition. Read-only search commands may be chosen within scope. Return concise paths/lines, necessary snippets, commands/exit codes, and uncertainties. Astra reads source relevant to its edits and checks critical evidence without repeating the entire investigation. Keep small tasks with Astra.
+
+brief 需包含具体问题、允许路径、准确检查命令和工作目录、允许产物位置及停止条件。Luna 可在范围内选择只读搜索命令。返回简洁的路径与行号、必要片段、命令与退出码及不确定点。Astra 阅读修改相关的源码并核验关键证据，避免重复整轮调查。小任务由 Astra 直接完成。
 
 Default routing: `gpt-6-astra` / `low`, `gpt-5.6-luna` / `max`, worker `luna_max_worker`, `fork_turns: none`. Give monitors a shared job/PID/status source, polling interval, and stopping condition. Some command session IDs are agent-local; use a shared source instead. Keep brief waits with the parent. Do not promise lower total tokens or cost: waiting in a tool need not consume model tokens, while spawning and polling add overhead.
 
@@ -51,6 +55,6 @@ The installer backs up config, AGENTS, the selected worker, and the skill before
 
 ## Verify / 验证
 
-Start a new session to reload configuration. Verify monitoring on an actual long-running task, using a shared status source. The child must be Luna, never another Astra. If Luna is rejected, retry once with `gpt-5.6-terra` / `max` and report the fallback; `./scripts/install.sh --profile astra-terra` installs that default.
+Start a new session to reload configuration. Verify with a bounded read-only repo investigation: the child returns evidence and does not edit files. The child must be Luna, never another Astra. If Luna is rejected, retry once with `gpt-5.6-terra` / `max` and report the fallback; `./scripts/install.sh --profile astra-terra` installs that default.
 
-开启新会话以重新加载配置，用真实长任务和共享状态源验证监控。子代理应为 Luna，不应复制 Astra。Luna 被拒绝时可用 `gpt-5.6-terra` / `max` 重试一次并告知用户；`./scripts/install.sh --profile astra-terra` 可安装该默认路由。
+开启新会话以重新加载配置，用限定范围的只读仓库调查验证：子代理返回证据而不编辑文件。子代理应为 Luna，不应复制 Astra。Luna 被拒绝时可用 `gpt-5.6-terra` / `max` 重试一次并告知用户；`./scripts/install.sh --profile astra-terra` 可安装该默认路由。

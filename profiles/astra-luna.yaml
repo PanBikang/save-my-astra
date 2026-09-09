@@ -6,4 +6,4 @@ agents_enabled: true
 subagent_name: luna_max_worker
 subagent_model: gpt-5.6-luna
 subagent_effort: max
-notes: Personal default. Astra Low writes all files and executes work; Luna Max only waits for existing long-running tasks.
+notes: Personal default. Astra Low authors all file changes; Luna Max investigates read-only, runs specified checks, and monitors tasks.

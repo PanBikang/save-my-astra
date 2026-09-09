@@ -169,10 +169,10 @@ def verify_install(codex_home: Path, profile_name: str) -> tuple[list[str], dict
             errors.append("AGENTS.md missing fork_turns: none")
     expected_agents = render_template("AGENTS.md", profile).rstrip()
     if expected_agents not in agents_md:
-        errors.append("AGENTS.md does not contain the personal monitor-only delegation rules")
+        errors.append("AGENTS.md does not contain the personal delegation rules")
     expected_worker = tomlkit.parse(render_template("agents/worker.toml", profile))
     if worker.get("developer_instructions") != expected_worker["developer_instructions"]:
-        errors.append("worker instructions do not match the personal monitor-only policy")
+        errors.append("worker instructions do not match the personal read-only investigation and specified-check policy")
     return errors, summary
 
 
