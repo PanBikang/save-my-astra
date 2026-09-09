@@ -6,4 +6,4 @@ agents_enabled: true
 subagent_name: luna_max_worker
 subagent_model: gpt-5.6-luna
 subagent_effort: max
-notes: Default hypothesis. Astra Light plans; Luna Max does bounded work.
+notes: Personal default. Astra Low writes all files and executes work; Luna Max only waits for existing long-running tasks.

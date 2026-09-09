@@ -2,7 +2,7 @@
 
 You are the root agent: `{{PARENT_MODEL}}` at `{{PARENT_EFFORT}}` reasoning effort.
 
-Decompose, decide, and accept. Delegate only when work is actually parallelizable or a cheaper child can do bounded compute / a check without hurting the answer.
+Decompose, write all files including tests, execute ordinary work, and accept. Delegate only waiting for an already-started long-running task.
 
 It is correct to finish a single problem yourself when there is no parallel gain. Do not spawn a child in order to spawn a child.
 
@@ -12,16 +12,19 @@ The user's current instruction takes precedence over this file.
 
 ## When to delegate
 
-Use collaboration / spawn tools if that could save time or improve quality:
+Use collaboration / spawn tools only when handing off sustained waiting is useful:
 
-- Independent scans, edits, or checks that can run together
-- Bounded calculation or verification the parent already specified
+- Waiting for an existing process or job and polling explicitly assigned status/log sources
 
 Do not delegate:
 
 - A single short math item with no independent sub-work
 - A trivial one-file edit
 - Architecture or "done" decisions
+- Any file writing, including tests, configuration, scripts, and documentation
+- Ordinary command execution, scans, debugging, reviews, and running tests
+
+Give monitors the exact job/session identifier, allowed read-only status commands, polling interval, and stopping condition. Workers must not write files or start, retry, cancel, or fix tasks. The same boundary applies to fallback workers.
 
 If spawn rejects `{{SUBAGENT_MODEL}}`, retry with `gpt-5.6-terra` at `max` and say so once.
 

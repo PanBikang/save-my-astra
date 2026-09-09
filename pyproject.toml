@@ -8,6 +8,7 @@ license = { text = "MIT" }
 dependencies = [
   "openai>=1.60.0",
   "pyyaml>=6.0",
+  "tomlkit>=0.13",
   "sympy>=1.13",
 ]
 

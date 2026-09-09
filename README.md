@@ -1,110 +1,90 @@
-# Save My Astra 🚀
+# Save My Astra: PanBikang's Fork
 
-**Stop burning GPT-6 Astra tokens on work Luna can do.**
+Personal fork of [fengxiaohu/save-my-astra](https://github.com/fengxiaohu/save-my-astra). Astra writes all files and executes the work. Luna only waits for existing long-running tasks and reports their status.
 
-**别让 Luna 能干的活继续烧 GPT-6 Astra 的额度。**
+[fengxiaohu/save-my-astra](https://github.com/fengxiaohu/save-my-astra) 的个人 fork。Astra 负责所有文件编写和实际执行；Luna 只等待已启动的长任务、轮询状态并报告结果。
 
-GPT-6 Astra stays as the orchestrator.
-Cheap workers handle exploration, scanning, and parallel subagent work.
+## Routing / 分工
 
-GPT-6 Astra 继续做编排者；便宜的 worker 负责探索、扫描和并行子 agent 工作。
+Default: `gpt-6-astra` / `low` as parent, `gpt-5.6-luna` / `max` as monitor, with `fork_turns: none`. Terra / `max` is the fallback when Luna cannot spawn.
 
-A tiny Codex routing setup so spawned agents stop cloning GPT-6 Astra.
+默认主代理为 `gpt-6-astra` / `low`，监控子代理为 `gpt-5.6-luna` / `max`，使用 `fork_turns: none`。Luna 无法启动时回退到 Terra / `max`。
 
-一套轻量 Codex 路由配置，让 spawn 出来的 agent 不再克隆 GPT-6 Astra。
+| Owner / 负责者 | Work / 工作 |
+| --- | --- |
+| Astra | Code, tests, fixtures, documentation, configuration, scripts, refactors, scans, debugging, reviews, running commands / 代码、测试、文档、配置、脚本、重构、扫描、调试、审查和命令执行 |
+| Luna | Wait for an existing task; read assigned status/log sources; report completion, failure or timeout / 等待已有任务，只读轮询指定状态或日志，报告完成、失败或超时 |
 
-## The problem / 问题
+Luna cannot write any files, start jobs, run tests, retry, cancel, or fix tasks. Short waits stay with Astra. A monitor needs a shared PID, job ID, or status source, a polling interval, and a stopping condition. Some tools expose session IDs only to the agent that created them; use a shared status source in that case.
 
-Without routing:
+Luna 不写任何文件、不启动任务、不运行测试、不重试、不取消也不修复任务。短暂等待由 Astra 直接处理。监控任务需明确共享 PID、作业 ID 或状态源，以及轮询间隔和停止条件。部分工具的会话 ID 仅对创建它的代理可见，此时使用共享状态源。
 
-没有路由时：
+These are instruction-based boundaries, not filesystem sandbox enforcement. Waiting itself does not necessarily consume model tokens; adding a monitor can increase total tokens. This fork prioritizes ownership and convenience, with no guaranteed cost reduction or bug prevention.
 
-Astra → Astra → Astra → Astra
+这些边界由指令约束，并非文件系统沙箱强制隔离。工具等待本身不一定消耗模型 token，增加监控代理可能增加总 token。本 fork 优先保证分工和使用习惯，不保证节省费用或消除 bug。
 
-With Save My Astra:
+## Install or Replace / 全新安装或覆盖旧版
 
-使用 Save My Astra 后：
+Requires Git and Python 3.11+. Use the same command for a fresh install, replacing upstream Save My Astra, or reinstalling this fork. A local virtual environment keeps dependencies separate.
 
-```text
-Astra 🧠
- ├─ Luna ⚡
- ├─ Luna ⚡
- └─ Terra ⚡
-```
-
-Luna is the default worker. Terra is the fallback if Luna cannot spawn.
-
-Luna 是默认 worker；如果 Luna 无法 spawn，则回退到 Terra。
-
-**Premium intelligence for premium decisions.**
-
-**重要决策用高端模型，其余交给 worker。**
-
-Default profile `astra-luna` pins `gpt-6-astra` (`low`) as the parent and `gpt-5.6-luna` (`max`) as the child. This is a hypothesis to install and measure, not a claim that the pairing is cheapest.
-
-默认 profile `astra-luna` 将 `gpt-6-astra`（`low`）固定为 parent、`gpt-5.6-luna`（`max`）固定为 child。这是一个可安装、可测量的假设，并不声称该组合成本最低。
-
-## Install / 安装
-
-Does not overwrite `model_provider`, MCP servers, notify paths, or plugins. Existing `config.toml` and `AGENTS.md` are copied to `~/.codex/backups/` first.
-
-不会覆盖 `model_provider`、MCP servers、notify 路径或 plugins。现有的 `config.toml` 和 `AGENTS.md` 会先备份到 `~/.codex/backups/`。
+需要 Git 和 Python 3.11+。全新安装、覆盖原版 Save My Astra、重装个人版均使用同一个安装命令；依赖放入仓库自己的虚拟环境。
 
 ```bash
-./scripts/install.sh                 # default profile: astra-luna
-./scripts/install.sh --profile astra-terra
+git clone https://github.com/PanBikang/save-my-astra.git
+cd save-my-astra
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+./scripts/install.sh
+.venv/bin/python -m eval verify --profile astra-luna
+```
+
+Preview or choose a different target/profile:
+
+预览变更，或指定目标目录和 profile：
+
+```bash
 ./scripts/install.sh --dry-run
-python -m eval verify --profile astra-luna
+./scripts/install.sh --codex-home /path/to/.codex
+./scripts/install.sh --profile astra-terra
 ```
 
-Or tell Codex: install Save My Astra from this repo. The skill is `skills/save-my-astra/SKILL.md`.
+The installer uses the repository's `.venv/bin/python3` when available, otherwise `python3`. Set `ASTRA_PYTHON` to override. The target defaults to `$CODEX_HOME` or `~/.codex`. A dry run writes no target files; its preview includes existing configuration, so do not publish it without checking for secrets.
 
-也可以直接告诉 Codex：从本仓库安装 Save My Astra。Skill 位于 `skills/save-my-astra/SKILL.md`。
+安装器优先使用仓库的 `.venv/bin/python3`，否则使用 `python3`；可用 `ASTRA_PYTHON` 指定解释器。目标默认为 `$CODEX_HOME` 或 `~/.codex`。预览不写目标文件，但会包含现有配置，发布前需检查是否有密钥。
 
-Then start a **new** Codex session. Spawn one read-only repo scan. The child must be `gpt-5.6-luna` (or Terra if you installed that profile), not `gpt-6-astra`.
-
-然后开启一个**新的** Codex 会话，spawn 一次只读仓库扫描。子 agent 必须是 `gpt-5.6-luna`（若安装的是 Terra profile 则为 Terra），不能是 `gpt-6-astra`。
-
-| Profile | Parent | Child |
-| --- | --- | --- |
-| `astra-luna` | `gpt-6-astra` / `low` | `gpt-5.6-luna` / `max` |
-| `astra-terra` | `gpt-6-astra` / `low` | `gpt-5.6-terra` / `max` |
-| `astra-solo` | `gpt-6-astra` / `low` | off (baseline) |
-| `sol-luna` | `gpt-5.6-sol` / `low` | `gpt-5.6-luna` / `max` |
-
-Use `astra-terra` when Luna is missing from the spawn allowlist.
-
-当 spawn 允许列表里没有 Luna 时，使用 `astra-terra`。
-
-## What this writes / 会写入什么
-
-- `~/.codex/config.toml` — parent model, `[agents]` defaults, `hide_spawn_agent_metadata = false`
-- `~/.codex/agents/luna-max-worker.toml` — child model pinned
-- `~/.codex/AGENTS.md` — delegate when it can save time or quality; do not clone the parent
-- `~/.codex/skills/save-my-astra/SKILL.md` — the same one-liner for later sessions
-
-- `~/.codex/config.toml` — parent 模型、`[agents]` 默认值、`hide_spawn_agent_metadata = false`
-- `~/.codex/agents/luna-max-worker.toml` — 固定 child 模型
-- `~/.codex/AGENTS.md` — 在能节省时间或提升质量时委派；不要克隆 parent
-- `~/.codex/skills/save-my-astra/SKILL.md` — 供后续会话复用的同一套说明
-
-Plus quota is not API spend. Subagent runs can use more tokens and still cost less if cheap tokens replace expensive ones.
-
-Plus 额度不等于 API 花费。子 agent 可能消耗更多 token，但只要用便宜 token 替换昂贵 token，整体仍可能更省。
-
-## Measure (optional) / 测量（可选）
-
-Eval adapters live under `eval/`. Method and claim rules: [docs/method.md](docs/method.md).
-
-Eval 适配器位于 `eval/`。方法与结论规则见 [docs/method.md](docs/method.md)。
+## Upgrade and Backup / 更新与备份
 
 ```bash
-python -m pip install -e ".[dev]"
-python -m eval check
+git pull --ff-only
+.venv/bin/python -m pip install -e .
+./scripts/install.sh
 ```
 
-## Contributing / 贡献
+Every install backs up existing files under a unique `backups/save-my-astra-<timestamp>-<suffix>/` directory in the target Codex home, preserving relative paths:
 
-Fork, branch, PR, squash merge. Details: [CONTRIBUTING.md](CONTRIBUTING.md).
+每次安装都会在目标 Codex 目录下创建唯一的 `backups/save-my-astra-<timestamp>-<suffix>/` 目录，按原相对路径备份已有文件：
 
-Fork、开分支、PR、squash 合并。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- `config.toml`
+- `AGENTS.md`
+- `agents/luna-max-worker.toml` (or the selected profile's worker / 或所选 profile 的 worker)
+- `skills/save-my-astra/SKILL.md`
+
+The config merge preserves provider, MCP, notify, plugins, named profiles, and unrelated agent settings. The installer replaces the known old orchestration block or its own marked block in `AGENTS.md`, preserving surrounding instructions. Worker and skill files use their existing names so this fork replaces the original installation. Restore the saved files to the same relative paths to roll back.
+
+配置合并保留 provider、MCP、notify、plugins、命名 profile 和其他 agent 设置。安装器替换 `AGENTS.md` 中可识别的旧编排规则块或个人版标记块，保留块外指令。worker 和 skill 沿用原名称，实现覆盖安装。回滚时将备份文件还原至对应相对路径。
+
+Start a new Codex session after installation so it reloads the configuration and worker instructions. Verify with a real long-running task: Astra starts it, and may delegate monitoring to Luna using a shared status source. Root effort selected in the UI or CLI can override the installed default.
+
+安装后开启新的 Codex 会话，使配置和 worker 指令重新加载。可用实际长任务验证：由 Astra 启动，按需交给 Luna 通过共享状态源监控。界面或 CLI 中选择的主代理思考强度可以覆盖安装默认值。
+
+## Checks / 检查
+
+```bash
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m pytest
+.venv/bin/python -m eval check
+```
+
+The upstream evaluation tools remain under `eval/`; their historical results do not measure this fork's monitor-only policy. See [docs/method.md](docs/method.md).
+
+上游评测工具保留在 `eval/`；历史结果不代表本 fork 的仅监控分工。详见 [docs/method.md](docs/method.md)。
